@@ -5,6 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string_view>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -245,22 +246,21 @@ public:
     }
   }
 
-  std::vector<std::byte> receive_of_type(unsigned int expected_type) {
+  std::optional<std::vector<std::byte>> receive_of_type(
+      unsigned int expected_type) {
     while (true) {
       std::size_t head = header_->head.load(std::memory_order_acquire);
       std::size_t tail = header_->tail.load(std::memory_order_acquire);
 
       if (head == tail) {
-        std::this_thread::yield();
-        continue;
+        return std::nullopt;
       }
 
       size_t head_pos = static_cast<size_t>(head % capacity_);
       auto *hdr = reinterpret_cast<MessageHeader *>(buffer_ + head_pos);
 
       if (!hdr->ready.load(std::memory_order_acquire)) {
-        std::this_thread::yield();
-        continue;
+        return std::nullopt;
       }
 
       unsigned int type = hdr->type;

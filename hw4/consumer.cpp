@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <optional>
+#include <thread>
 #include <vector>
 
 constexpr unsigned int kTextMessageType = 1;
@@ -28,9 +30,15 @@ int main(int argc, char **argv) {
 
   int received = 0;
   while (max_messages == 0 || received < max_messages) {
-    std::vector<std::byte> payload = consumer.receive_of_type(kTextMessageType);
+    auto payload_opt = consumer.receive_of_type(kTextMessageType);
+    if (!payload_opt) {
+      std::this_thread::yield();
+      continue;
+    }
+
+    const auto &payload = *payload_opt;
     std::string text(reinterpret_cast<const char *>(payload.data()),
-                     payload.size());
+                      payload.size());
     std::printf("Consumer: got \"%s\"\n", text.c_str());
     ++received;
   }
