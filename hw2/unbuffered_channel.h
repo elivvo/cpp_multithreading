@@ -6,6 +6,7 @@
 #include <optional>
 #include <queue>
 #include <stdexcept>
+#include <utility>
 
 template <class T> class UnbufferedChannel {
 private:
@@ -31,8 +32,6 @@ public:
   void Send(const T &value) {
     PendingSend pending;
     pending.value = value;
-    PendingSend *ptr = &pending;
-
     std::unique_lock<std::mutex> lock(mtx_);
 
     if (closed_) {
@@ -41,22 +40,19 @@ public:
 
     if (!receivers_.empty()) {
       PendingRecv *receiver = receivers_.front();
-      receiver->value = value;
+      receiver->value = std::move(value);
       receiver->completed = true;
       receivers_.pop();
-      ptr->completed = true;
-      ptr->has_receiver = true;
+      pending.completed = true;
+      pending.has_receiver = true;
       cv_.notify_all();
       return;
     }
 
+    PendingSend *ptr = &pending;
     senders_.push(ptr);
 
-    cv_.wait(lock, [ptr, this] { return ptr->completed || closed_; });
-
-    if (closed_ && !ptr->has_receiver) {
-      throw std::runtime_error("Channel closed");
-    }
+    cv_.wait(lock, [ptr] { return ptr->completed; });
   }
 
   std::optional<T> Recv() {
@@ -77,7 +73,7 @@ public:
       sender->has_receiver = true;
       senders_.pop();
       cv_.notify_all();
-      return pending.value;
+      return std::move(pending.value);
     }
 
     receivers_.push(ptr);
